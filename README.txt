@@ -1,4 +1,4 @@
-The SDLPtools software implements a SLDP method for selective linkage disequilibrium pruning combined with biological prior information to increase th accuracy of genomic prediction.
+The SDLPtools software implements a SLDP method for selective linkage disequilibrium pruning combined with biological prior information to increase the accuracy of genomic prediction.
 The program can be compiled with perl on a unix or windows operating system using the following commands:
 ./SLDPtools --snpfile test_snpfile.txt --prior-snp-list test_prior_SNPlist.txt --r2 0.5 --window-size 50 --step-size 10 --out test_SLDP_out.txt
 
