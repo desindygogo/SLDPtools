@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+use Getopt::Long;
+use Statistics::Basic qw(:all);
+#variate in commond line
+my $snp_file;
+my $prior_snp_list;
+my $r2_threshold;
+my $window_size;
+my $step_size;
+my $output_filename;
+my $help;
+
+#variate in caculate
+my %snp_list_id;
+my @block;
+my @snp_remaind;
+my @block_addition;
+
+GetOptions('snpfile=s' => \$snp_file,
+           'prior-snp-list=s' => \$prior_snp_list,
+           'r2=s' => \$r2_threshold,
+           'window-size=s' => \$window_size,
+           'step-size=s' => \$step_size,
+           'out=s' => \$output_filename,
+           'help!' => \$help,
+);
+if($help){
+        print "------------------------------\nUsage: --help <print this help message>\n --snpfile <input snpfile file where missing genotype were not allowd>\n --prior-snp-list <input snp_list file where each line represents an SNPid >\n --r2 <LD r2 threshold used in LD pruning>\n --window-size <the window size used in LD pruning(SNP number)>\n --step-size <the step size used in LD pruning(SNP number)>\n --out <output file name>\n------------------------------\n";
+}
+die("required arguments: vcf,snp-list,r2,window-size,step-size,out") if ( ! $snp_file ||! $prior_snp_list || ! $r2_threshold || ! $window_size || ! $step_size || ! $output_filename);
+#reading important SNP list;
+open SNPLIST,$prior_snp_list or die "cannot open $prior_snp_list $!";
+while(<SNPLIST>){
+	chomp;
+	$snp_list_id{$_} = 1;
+}
+close SNPLIST;
+#geting important SNP genotypes;
+open VCFF,$snp_file or die "cannot open $snp_file $!";
+while(<VCFF>){
+	chomp;
+	if($_ =~/^SNPID/){
+		$file_pos = tell VCFF;
+	}
+	unless($_ =~ /^SNPID/){
+		($snpid,@genotype) = split /\t/,$_;
+		if (defined($snp_list_id{$snpid})){
+			$snp_list_id{$snpid} = \@genotype;
+		}
+	}
+}
+close VCFF;
+#sliding window and ld pruning;
+open VCFF,$snp_file or die "cannot open $snp_file $!";
+<VCFF>;
+for($i=1;$i<=$window_size;$i++){
+	chomp($tmp = <VCFF>);
+	push @block ,$tmp;
+}
+for($i=0;$i<=$#block;$i++){
+	$condition1 = 0;
+	($snpid,@genotype_a) = split /\t/,$block[$i];
+	foreach $imp (keys %snp_list_id){
+		@genotype_b = @{$snp_list_id{$imp}};
+		$cor_a_b = correlation(\@genotype_a , \@genotype_b);
+		if($cor_a_b >= 0.80 or $cor_a_b <= -0.80){
+			push @snp_remaind,$snpid;
+			$condition1++;
+			last;
+		}
+	}
+	if($condition1 == 0){
+		$condition2 = 0;
+		for($j=$i+1;$j<=$#block;$j++){
+			($snpid_c,@genotype_c) = split /\t/,$block[$j];
+			$cor_a_c = correlation(\@genotype_a , \@genotype_c);
+			if($cor_a_c >= $r2_threshold or $cor_a_c <= -$r2_threshold){
+				$condition2 ++;
+				last;
+			}
+		}
+		if($condition2 == 0){
+			push @snp_remaind,$snpid;
+		}
+	}
+}
+while(<VCFF>){
+	chomp;
+	splice (@block,0,$step_size);
+	push @block,$_;
+	for($k=2;$k<=$step_size;$k++){
+		if(defined(<VCFF>)){
+			chomp($tmp2 = <VCFF>);
+			push @block,$tmp2;
+		}
+	}
+	for($i=0;$i<=$#block;$i++){
+        	$condition1 = 0;
+        	($snpid,@genotype_a) = split /\t/,$block[$i];
+        	foreach $imp (keys %snp_list_id){
+                	@genotype_b = @{$snp_list_id{$imp}};
+                	$cor_a_b = correlation(\@genotype_a , \@genotype_b);
+                	if($cor_a_b >= 0.80 or $cor_a_b <= -0.80){
+                        	push @snp_remaind,$snpid;
+                        	$condition1++;
+                        	last;
+                	}
+        	}
+        	if($condition1 == 0){
+                	$condition2 = 0;
+                	for($j=$i+1;$j<=$#block;$j++){
+                        	($snpid_c,@genotype_c) = split /\t/,$block[$j];
+                        	$cor_a_c = correlation(\@genotype_a , \@genotype_c);
+                        	if($cor_a_c >= $r2_threshold or $cor_a_c <= -$r2_threshold){
+                                	$condition2++;
+                                	last;
+                        	}
+                	}
+                	if($condition2 == 0){
+                        	push @snp_remaind,$snpid;
+                	}
+        	}
+	}
+}
+close VCFF;
+#output final remaind SNPid
+open OUT,'>',$output_filename;
+my %ha;
+my @uniq=grep{++$ha{$_}<2}@snp_remaind;
+foreach (@uniq){print OUT "$_\n";}
