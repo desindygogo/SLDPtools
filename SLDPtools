@@ -125,6 +125,7 @@ while(<VCFF>){
 close VCFF;
 #output final remaind SNPid
 open OUT,'>',$output_filename;
+push @snp_remaind,keys(%snp_list_id);
 my %ha;
 my @uniq=grep{++$ha{$_}<2}@snp_remaind;
 foreach (@uniq){print OUT "$_\n";}
